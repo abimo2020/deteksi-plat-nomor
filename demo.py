@@ -1,8 +1,10 @@
 import argparse
 
+import os
 import numpy as np
 import cv2 as cv
 import pytesseract
+from datetime import datetime
 
 from lpd_yunet import LPD_YuNet
 
@@ -44,6 +46,7 @@ parser.add_argument('--save', '-s', action='store_true',
                     help='Usage: Specify to save file with results (i.e. bounding box, confidence level). Invalid in case of camera input.')
 parser.add_argument('--vis', '-v', action='store_true',
                     help='Usage: Specify to open a new window to show results. Invalid in case of camera input.')
+parser.add_argument('--output_directory', type=str, default='result', help='Usage: Set the output directory for captured frames, defaults to captured_frames.')
 args = parser.parse_args()
 
 def visualize(image, dets, line_color=(0, 255, 0), text_color=(0, 0, 255), fps=None):
@@ -67,6 +70,7 @@ def visualize(image, dets, line_color=(0, 255, 0), text_color=(0, 0, 255), fps=N
 
         # Perform OCR on the license plate region
         plate_text = pytesseract.image_to_string(plate_roi, config='--psm 8')
+        
         cv.putText(output, 'Plat Nomor : {}'.format(plate_text), (x1, y1 - 5), cv.FONT_HERSHEY_SIMPLEX, 0.5, text_color)
 
     return output
@@ -116,8 +120,11 @@ if __name__ == '__main__':
         h = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
         model.setInputSize([w, h])
 
+        if args.output_directory and not os.path.exists(args.output_directory):
+                os.makedirs(args.output_directory)
+
         tm = cv.TickMeter()
-        while cv.waitKey(1) < 0:
+        while True :
             hasFrame, frame = cap.read()
             if not hasFrame:
                 print('No frames grabbed!')
@@ -130,6 +137,15 @@ if __name__ == '__main__':
 
             # Draw results on the input image
             frame = visualize(frame, results, fps=tm.getFPS())
+            key = cv.waitKey(1)
+            if key == ord('p') or key == ord('P'):
+                if args.output_directory and len(results) > 0:
+                    timestamp = datetime.now().strftime('%Y%m%d%H%M%S%f')[:-3]  # Format: YYYYMMDDHHMMSSmmm
+                    filename = os.path.join(args.output_directory, f'captured_frame_{timestamp}.jpg')
+                    cv.imwrite(filename, frame)
+                    print(f'Frame captured: {filename}')
+            elif key == ord('q') or key == ord('Q'):
+                break  
 
             # Visualize results in a new Window
             cv.imshow('LPD-YuNet Demo', frame)
