@@ -5,6 +5,7 @@ import numpy as np
 import cv2 as cv
 import pytesseract
 from datetime import datetime
+import mysql.connector
 
 from lpd_yunet import LPD_YuNet
 
@@ -47,10 +48,19 @@ parser.add_argument('--save', '-s', action='store_true',
 parser.add_argument('--vis', '-v', action='store_true',
                     help='Usage: Specify to open a new window to show results. Invalid in case of camera input.')
 parser.add_argument('--output_directory', type=str, default='result', help='Usage: Set the output directory for captured frames, defaults to captured_frames.')
+parser.add_argument('--host', type=str, default='localhost',
+                    help='MySQL host, defaults to localhost.')
+parser.add_argument('--user', type=str, default='root',
+                    help='MySQL username.')
+parser.add_argument('--password', type=str, default='popo1212',
+                    help='MySQL password.')
+parser.add_argument('--database', type=str, default='cv',
+                    help='MySQL database name.')
 args = parser.parse_args()
 
 def visualize(image, dets, line_color=(0, 255, 0), text_color=(0, 0, 255), fps=None):
     output = image.copy()
+    plate_text = ''
 
     if fps is not None:
         cv.putText(output, 'FPS: {:.2f}'.format(fps), (0, 15), cv.FONT_HERSHEY_SIMPLEX, 0.5, text_color)
@@ -73,7 +83,7 @@ def visualize(image, dets, line_color=(0, 255, 0), text_color=(0, 0, 255), fps=N
         
         cv.putText(output, 'Plat Nomor : {}'.format(plate_text), (x1, y1 - 5), cv.FONT_HERSHEY_SIMPLEX, 0.5, text_color)
 
-    return output
+    return output,plate_text
 
 if __name__ == '__main__':
     backend_id = backend_target_pairs[args.backend_target][0]
@@ -87,6 +97,26 @@ if __name__ == '__main__':
                       keepTopK=args.keep_top_k,
                       backendId=backend_id,
                       targetId=target_id)
+    
+    # Connect to the MySQL database
+    conn = mysql.connector.connect(
+        host=args.host,
+        user=args.user,
+        password=args.password,
+        database=args.database
+    )
+    cursor = conn.cursor()
+
+    # Create a table if it doesn't exist
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS plat_nomor (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            text VARCHAR(255),
+            image_path VARCHAR(255),
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
 
     # If input is an image
     if args.input is not None:
@@ -136,7 +166,7 @@ if __name__ == '__main__':
             tm.stop()
 
             # Draw results on the input image
-            frame = visualize(frame, results, fps=tm.getFPS())
+            frame,plate_text = visualize(frame, results, fps=tm.getFPS())
             key = cv.waitKey(1)
             if key == ord('p') or key == ord('P'):
                 if args.output_directory and len(results) > 0:
@@ -144,6 +174,9 @@ if __name__ == '__main__':
                     filename = os.path.join(args.output_directory, f'captured_frame_{timestamp}.jpg')
                     cv.imwrite(filename, frame)
                     print(f'Frame captured: {filename}')
+                    cursor.execute('INSERT INTO plat_nomor (text, image_path, timestamp) VALUES (%s, %s, %s)',
+                       (plate_text, filename, datetime.now()))
+                    conn.commit()
             elif key == ord('q') or key == ord('Q'):
                 break  
 
