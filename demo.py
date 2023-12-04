@@ -2,6 +2,7 @@ import argparse
 
 import numpy as np
 import cv2 as cv
+import pytesseract
 
 from lpd_yunet import LPD_YuNet
 
@@ -60,6 +61,13 @@ def visualize(image, dets, line_color=(0, 255, 0), text_color=(0, 0, 255), fps=N
         cv.line(output, (x2, y2), (x3, y3), line_color, 2)
         cv.line(output, (x3, y3), (x4, y4), line_color, 2)
         cv.line(output, (x4, y4), (x1, y1), line_color, 2)
+
+        # Crop the license plate region
+        plate_roi = image[y1:y3, x1:x3]
+
+        # Perform OCR on the license plate region
+        plate_text = pytesseract.image_to_string(plate_roi, config='--psm 8')
+        cv.putText(output, 'Plat Nomor : {}'.format(plate_text), (x1, y1 - 5), cv.FONT_HERSHEY_SIMPLEX, 0.5, text_color)
 
     return output
 
