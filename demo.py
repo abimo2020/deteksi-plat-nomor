@@ -81,7 +81,7 @@ def visualize(image, dets, line_color=(0, 255, 0), text_color=(0, 0, 255), fps=N
         # Perform OCR on the license plate region
         plate_text = pytesseract.image_to_string(plate_roi, config='--psm 8')
         
-        cv.putText(output, 'Plat Nomor : {}'.format(plate_text), (x1, y1 - 5), cv.FONT_HERSHEY_SIMPLEX, 0.5, text_color)
+        cv.putText(output, 'Plat Nomor : {}'.format(plate_text), (x1, y1 - 5), cv.FONT_HERSHEY_SIMPLEX, 1, text_color,thickness=2)
 
     return output,plate_text
 
@@ -121,28 +121,38 @@ if __name__ == '__main__':
     # If input is an image
     if args.input is not None:
         image = cv.imread(args.input)
-        h, w, _ = image.shape
+        
+        if image is not None:  # Check if the image is loaded successfully
+            h, w, _ = image.shape
 
-        # Inference
-        model.setInputSize([w, h])
-        results = model.infer(image)
+            # Inference
+            model.setInputSize([w, h])
+            results = model.infer(image)
 
-        # Print results
-        print('{} license plates detected.'.format(results.shape[0]))
+            # Print results
+            print('{} license plates detected.'.format(results.shape[0]))
 
-        # Draw results on the input image
-        image = visualize(image, results)
+            # Draw results on the input image
+            image, plate_text = visualize(image, results)
 
-        # Save results if save is true
-        if args.save:
-            print('Resutls saved to result.jpg')
-            cv.imwrite('result.jpg', image)
+            # Save results if save is true
+            if args.save:
+                timestamp = datetime.now().strftime('%Y%m%d%H%M%S%f')[:-3]  # Format: YYYYMMDDHHMMSSmmm
+                filename = os.path.join(args.output_directory, f'captured_frame_{timestamp}.jpg')
+                cursor.execute('INSERT INTO plat_nomor (text, image_path, timestamp) VALUES (%s, %s, %s)',
+                    (plate_text, filename, datetime.now()))
+                conn.commit()
+                print(f'Results saved to {filename}')
+                cv.imwrite(filename, image)
 
-        # Visualize results in a new window
-        if args.vis:
-            cv.namedWindow(args.input, cv.WINDOW_AUTOSIZE)
-            cv.imshow(args.input, image)
-            cv.waitKey(0)
+            # Visualize results in a new window
+            if args.vis:
+                cv.namedWindow(args.input, cv.WINDOW_AUTOSIZE)
+                cv.imshow(args.input, image)
+                cv.waitKey(0)
+        else:
+            print(f"Error: Unable to load the image from {args.input}")
+
     else: # Omit input to call default camera
         deviceId = 0
         cap = cv.VideoCapture(deviceId)
